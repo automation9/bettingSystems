@@ -1,47 +1,9 @@
 import automation9
-##from guerrillamail import GuerrillaMailSession
+from captcha2 import CaptchaUpload
+from guerrillamail import GuerrillaMailSession
 from selenium import webdriver
 from selenium.webdriver.support.ui import Select
-from PIL import Image
-
-def get_captcha(driver, element, path):
-    # now that we have the preliminary stuff out of the way time to get that image :D
-    location = element.location
-    size = element.size
-    # saves screenshot of entire page
-    driver.save_screenshot(path)
-
-    import time
-    time.sleep(10) # stop to solve catcha manually
-
-    # uses PIL library to open image in memory
-    image = Image.open(path)
-
-    left = location['x']
-    top = location['y'] + 140
-    right = location['x'] + size['width']
-    bottom = location['y'] + size['height'] + 140
-
-    image = image.crop((left, top, right, bottom))  # defines crop points
-    image.save(path, 'jpeg')  # saves new cropped image
-
-def get_captcha2(driver, elem, path):
-    from selenium.webdriver import ActionChains
-##    elem = driver.find_element_by_css_selector("#imagecpt")
-    action_chain = ActionChains(driver)
-    action_chain.move_to_element(elem)
-    action_chain.perform()
-    loc, size = elem.location_once_scrolled_into_view, elem.size
-    left, top = loc['x'], loc['y']
-    width, height = size['width'], size['height']
-    box = (int(left), int(top), int(left + width), int(top + height))
-##    screenshot = driver.get_screenshot_as_base64()
-##    img = Image.open(StringIO(base64.b64decode(screenshot)))
-    driver.save_screenshot(path)
-    image = Image.open(path)
-
-    captcha = image.crop(box)
-    captcha.save(path, 'PNG')   
+from PIL import Image   
 
 def generate_register_info():
     _username = automation9.random_username()
@@ -51,17 +13,31 @@ def generate_register_info():
         'email': _email_address,
         'username': _username,
         'password': "!Admin987",
-        'mailSession' : _mailSession,
+        'mailSessionID' : _mailSession.session_id,
         }
-    
-##    automation9.get_guerrilla_mail_session()
-##    email = n   
-##    username = 
-##    password = "!Admin987"
-    
-    return asession
 
-def signup_new_account(**kwargs):
+def get_verification_link(mailSessionID=None, subjectPattern=None, linkPattern=r"", mailService="Guerrilla"):
+    import re
+    if mailService == "Guerrilla":
+        from guerrillamail import GuerrillaMailSession
+        _mailSession = GuerrillaMailSession(mailSessionID)
+        for mail in _mailSession.get_email_list():
+            print("============")
+            print(mail.guid)
+            if subjectPattern in mail.subject:
+                fetch_mail = _mailSession.get_email(mail.guid)
+                body = fetch_mail.body
+                m = re.search(linkPattern, body)
+                if m:
+                    link = m.group('veri_link')
+                    print("LINK FOUND: "+link)
+                    return link
+    return 
+
+def madjacksports_signup_new_account(username=None, email=None, password="!Admin987", mailSessionID=None):
+    """
+    mailSessionID: used for "Click on link to verify user"
+    """
     driver = webdriver.Chrome(executable_path=r"D:\01_software\chromedriver_win32\chromedriver.exe")
     driver.get("http://www.madjacksports.com/forum/register.php")
     select = Select(driver.find_element_by_id('month')).select_by_value("02")
@@ -72,33 +48,86 @@ def signup_new_account(**kwargs):
     import time
     time.sleep(0.5)
 
-    driver.find_element_by_id("regusername").send_keys(kwargs['username'])
-    driver.find_element_by_id("password").send_keys(kwargs['password'])
-    driver.find_element_by_id("passwordconfirm").send_keys(kwargs['password'])
-    driver.find_element_by_id("email").send_keys(kwargs['email'])
-    driver.find_element_by_id("emailconfirm").send_keys(kwargs['email'])
-    import time
-    time.sleep(2) # stop to solve catcha manually
+    driver.find_element_by_id("regusername").send_keys(username)
+    driver.find_element_by_id("password").send_keys(password)
+    driver.find_element_by_id("passwordconfirm").send_keys(password)
+    driver.find_element_by_id("email").send_keys(email)
+    driver.find_element_by_id("emailconfirm").send_keys(email)
+##    import time
+##    time.sleep(2) # stop to solve catcha manually
     img = driver.find_element_by_id("imagereg")
-    automation9.get_captcha(driver, img, "captcha.png")
+    automation9.screenshot_captcha(driver, img, "captcha.png")
+    captcha = CaptchaUpload("7db8a59bcb89211a9a94d6829239b239")
+    captcha_value = captcha.solve("captcha.png").replace(" ","")
+    print(captcha_value)
+    driver.find_element_by_id("imageregt").send_keys(captcha_value)
     
     driver.find_element_by_id("cfield_7").send_keys("A")
+    driver.find_element_by_id("cfield_6").send_keys(username)
     element = driver.find_element_by_id("cb_rules_agree")
     element.click()
     element.submit()
+    import time
+    time.sleep(10) # wait for verification email
+    #{{The string you entered for the image verification did not match what was displayed.}}
+    if "The string you entered for the image verification did not match what was displayed." in driver.page_source:
+        return False
 
     # after signup then click on signup link send to email
+    if mailSessionID is not None:
+        print("mailSessionID="+mailSessionID)
+        subjectPattern = "Action Required to Activate Membership for MadJack Sports Forums"
+        linkPattern = r'<a href="(?P<veri_link>.*a=act.*?)">'
+        link = get_verification_link(mailSessionID, subjectPattern, linkPattern)
+        print("LINK="+link)
+        time.sleep(2) # wait for verification email
+        import requests
+        r = requests.get(link)
+        print(r.status_code)
+        
+    
     # if register successfully then store to local file
+    with open("./emails.txt", "r+") as f:
+        content = f.read()
+        f.seek(0, 0)
+        f.write(email + "\t" + "madjacksports" +"\n" + content)
     
 if __name__ == "__main__":
-####    registerInfo = generate_register_info()
-####    print(registerInfo)
-##    registerInfo = {'password': '!Admin987', 'email': 'GaryNatcher138@guerrillamailblock.com', 'username': 'GaryNatcher138'}
-##    signup_new_account(**registerInfo)
+######    registerInfo = generate_register_info()
+######    print(registerInfo)
+####    registerInfo = {'password': '!Admin987', 'email': 'GaryNatcher138@guerrillamailblock.com', 'username': 'GaryNatcher138'}
+####    signup_new_account(**registerInfo)
+##
+####    from captcha2upload.captcha2upload import CaptchaUpload
+####    import captcha2upload
+##    captcha = CaptchaUpload("7db8a59bcb89211a9a94d6829239b239")
+##    print(captcha.solve("captcha.png").replace(" ",""))
+##    print(captcha.getbalance())
+    
+    registerInfo = generate_register_info()
+##    registerInfo["email"] = "vaqrxqgv@sharklasers.com"
+    print(registerInfo)
+    madjacksports_signup_new_account(**registerInfo)
 
-##    from captcha2upload.captcha2upload import CaptchaUpload
-##    import captcha2upload
-    from captcha2upload.captcha2upload import *
-    captcha = CaptchaUpload("7db8a59bcb89211a9a94d6829239b239")
-    print(captcha.getbalance())
+##    with open("./mailBody.txt", "r+") as rf:
+##        import re
+##        content = rf.read()
+##        print(content)
+##        linkPattern = r'^<a href="(?P<veri_link>.*a=act.*?)">'
+##        m = re.search(linkPattern, content)
+##        if m:
+##            print("FOUND")
+##            print(m.group('veri_link'))
+
+
+    
+
+##    text = 'http://www.madjacksports.com/forum/register.php?a=act&amp;u=493869&amp;i=0b7b61158e71772fa7e53da3dcfe11316c82d83c">http://www.madjacksports.com/forum/register.php?a=act&amp;u=493869&amp;i=0b7b61158e71772fa7e53da3dcfe11316c82d83c</a>'
+##    pattern = r'^<a href="(?P<veri_link>.*?)">'
+##    get_verification_link(mailSessionID, subjectPattern, linkPattern=r"")
+    
+##    aSession = GuerrillaMailSession("9qf5f8ffjrv40t824k2b1kq0i3")
+##    print(aSession.email_timestamp)
+##    get_verification_link(aSession, "", "")
+    
     
