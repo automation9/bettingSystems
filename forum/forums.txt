@@ -2,3 +2,5 @@
 #cappersmall.com --> administrator review
 #therxforum.com --> administrator review
 madjacksports.com
+bettingtalk.com	--> email domain block, can not receive verification email
+
